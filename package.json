@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "setup": "tsx src/cli/setup.ts"
+    "setup": "tsx src/cli/setup.ts",
+    "manage": "tsx src/cli/manage.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^11.0.0",
