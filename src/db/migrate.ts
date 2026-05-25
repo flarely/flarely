@@ -7,12 +7,13 @@
  */
 
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { fileURLToPath } from "url";
 import { db } from "./index.js";
 
 console.log("🗄️  Running database migrations...");
 
 migrate(db, {
-  migrationsFolder: new URL("./migrations", import.meta.url).pathname,
+  migrationsFolder: fileURLToPath(new URL("./migrations", import.meta.url)),
 });
 
 console.log("✅ Migrations complete.");

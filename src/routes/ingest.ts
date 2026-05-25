@@ -1,8 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { nanoid } from "nanoid";
-import { db } from "../db/index.js";
-import { events } from "../db/schema.js";
+import { db, events } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { buildFingerprint, checkAndRecordDedup } from "../dedup/index.js";
 import { notificationQueue } from "../queue/client.js";
