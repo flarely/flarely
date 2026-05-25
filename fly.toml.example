@@ -1,0 +1,50 @@
+# Flarely — fly.toml template for self-hosters
+# Copy this to fly.toml and replace all <placeholders> before deploying.
+#
+# Prerequisites:
+#   1. Install flyctl: https://fly.io/docs/hands-on/install-flyctl/
+#   2. fly auth login
+#   3. fly apps create <your-app-name>
+#   4. fly volumes create flarely_data --size 1 --app <your-app-name>
+#   5. Deploy a Redis app or use Upstash (https://upstash.com)
+#   6. fly secrets set REDIS_URL=<your-redis-url> RESEND_API_KEY=<your-key>
+#   7. fly deploy
+
+app = "<your-app-name>"
+primary_region = "lhr" # change to your nearest region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  DATABASE_PATH = "/data/flarely.db"
+  DEFAULT_DEDUP_WINDOW = "600"
+
+# Secrets (set via `fly secrets set`, never committed):
+#   REDIS_URL
+#   RESEND_API_KEY
+
+[[mounts]]
+  source = "flarely_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
