@@ -12,15 +12,22 @@ export async function createProject(): Promise<void> {
     "slack",
     "discord",
     "email",
+    "telegram",
+    "webhook",
   ] as const);
 
   let destConfig: Record<string, string> = {};
 
   if (destination === "slack" || destination === "discord") {
     destConfig.webhookUrl = await ask("Webhook URL: ");
-  } else {
+  } else if (destination === "email") {
     destConfig.to   = await ask("Send alerts TO (email address): ");
     destConfig.from = await ask("Send alerts FROM (e.g. Flarely <alerts@yourdomain.com>): ");
+  } else if (destination === "telegram") {
+    destConfig.botToken = await ask("Bot token: ");
+    destConfig.chatId   = await ask("Chat ID: ");
+  } else if (destination === "webhook") {
+    destConfig.url = await ask("Webhook URL: ");
   }
 
   const windowRaw  = await ask("Dedup window in seconds (Enter for default 600): ");

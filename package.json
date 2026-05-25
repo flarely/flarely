@@ -14,6 +14,8 @@
     "manage": "tsx src/cli/manage.ts"
   },
   "dependencies": {
+    "@bull-board/api": "^7.1.5",
+    "@bull-board/fastify": "^7.1.5",
     "@fastify/helmet": "^11.0.0",
     "@fastify/rate-limit": "^9.0.0",
     "better-sqlite3": "^9.0.0",

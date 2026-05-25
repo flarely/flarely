@@ -14,7 +14,7 @@ export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(), // nanoid
   name: text("name").notNull(),
   destination: text("destination", {
-    enum: ["slack", "discord", "email"],
+    enum: ["slack", "discord", "email", "telegram", "webhook"],
   }).notNull(),
   // JSON string: SlackConfig | DiscordConfig | EmailConfig
   config: text("config").notNull(),
