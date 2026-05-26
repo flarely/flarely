@@ -35,6 +35,7 @@ export async function buildApp() {
       return request.ip;
     },
     errorResponseBuilder: () => ({
+      statusCode: 429,
       error: "Too many requests — please slow down",
     }),
   });
