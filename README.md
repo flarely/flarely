@@ -1,16 +1,17 @@
 # Flarely
 
-Webhook-based error and event notification service. Send a POST request from anywhere — Flarely routes it to your Slack, Discord, or email with smart deduplication so repeated errors don't spam you.
+Webhook-based error and event notification service. Send a POST request from anywhere — Flarely routes it to your destination of choice with smart deduplication so repeated errors don't spam you.
 
 ## How it works
 
 ```
-Your app  →  POST /v1/ingest  →  dedup check  →  BullMQ queue  →  Slack / Discord / Email
+Your app  →  POST /v1/ingest  →  dedup check  →  BullMQ queue  →  Slack / Discord / Email / Telegram / Webhook
 ```
 
 - **Deduplication** — same error within the configured window (default 10 min) is suppressed. Only the first occurrence gets sent
 - **Retries** — failed deliveries retry 3 times with exponential backoff
 - **Audit log** — every ingest call is recorded (queued, delivered, suppressed, or failed)
+- **Rate limiting** — 100 requests per minute per API key
 
 ---
 
@@ -47,9 +48,11 @@ Edit `.env`:
 |---|---|---|---|
 | `PORT` | No | `3000` | HTTP server port |
 | `DATABASE_PATH` | No | `./data/flarely.db` | SQLite file path |
-| `REDIS_URL` | No | `redis://localhost:6379` | Redis connection URL |
+| `REDIS_URL` | No | `redis://localhost:6379` | Redis connection URL (use `rediss://` for TLS) |
 | `RESEND_API_KEY` | If using email | — | [Resend](https://resend.com) API key |
-| `DEFAULT_DEDUP_WINDOW` | No | `600` | Dedup window in seconds |
+| `DEFAULT_DEDUP_WINDOW` | No | `600` | Default dedup window in seconds |
+| `BULLBOARD_USER` | No | — | Username for the queue dashboard. Dashboard disabled if unset |
+| `BULLBOARD_PASS` | No | — | Password for the queue dashboard. Dashboard disabled if unset |
 
 ### 3. Create your first project and API key
 
@@ -57,7 +60,11 @@ Edit `.env`:
 npm run setup
 ```
 
-This interactive wizard creates a project, configures your destination (Slack/Discord/email), and prints your API key once.
+This interactive wizard creates a project, configures your destination, and prints your API key once. To manage projects after setup:
+
+```bash
+npm run manage
+```
 
 ### 4. Start the server
 
@@ -71,6 +78,18 @@ npm run build && npm start
 
 ---
 
+## Destinations
+
+| Destination | Config required |
+|---|---|
+| **Slack** | Incoming webhook URL |
+| **Discord** | Webhook URL |
+| **Email** | Resend API key + `to` + `from` address |
+| **Telegram** | Bot token + chat ID |
+| **Webhook** | Any URL — posts structured JSON |
+
+---
+
 ## Sending notifications
 
 No SDK needed — just a plain HTTP POST from any language.
@@ -78,7 +97,7 @@ No SDK needed — just a plain HTTP POST from any language.
 ### curl
 
 ```bash
-curl -X POST http://localhost:3000/v1/ingest \
+curl -X POST https://your-flarely-server/v1/ingest \
   -H "Authorization: Bearer sk_live_your_key_here" \
   -H "Content-Type: application/json" \
   -d '{
@@ -92,7 +111,7 @@ curl -X POST http://localhost:3000/v1/ingest \
 ### JavaScript / TypeScript
 
 ```ts
-await fetch("http://localhost:3000/v1/ingest", {
+await fetch("https://your-flarely-server/v1/ingest", {
   method: "POST",
   headers: {
     "Authorization": "Bearer sk_live_your_key_here",
@@ -113,7 +132,7 @@ await fetch("http://localhost:3000/v1/ingest", {
 ```python
 import requests
 
-requests.post("http://localhost:3000/v1/ingest",
+requests.post("https://your-flarely-server/v1/ingest",
   headers={"Authorization": "Bearer sk_live_your_key_here"},
   json={
     "title": "Payment failed",
@@ -146,11 +165,49 @@ requests.post("http://localhost:3000/v1/ingest",
 | `200` | Suppressed (duplicate within dedup window) |
 | `400` | Invalid request body |
 | `401` | Missing or invalid API key |
-| `429` | Rate limited |
+| `429` | Rate limited (100 req/min per API key) |
+
+---
+
+### `GET /v1/events`
+
+Query your event history. Requires the same `Authorization` header.
+
+**Query parameters**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `status` | `queued` \| `delivered` \| `suppressed` \| `failed` | — | Filter by status |
+| `level` | `info` \| `warn` \| `error` \| `critical` | — | Filter by level |
+| `limit` | number | `50` | Results per page (max 100) |
+| `offset` | number | `0` | Pagination offset |
+
+```bash
+# All events
+curl https://your-flarely-server/v1/events \
+  -H "Authorization: Bearer sk_live_your_key_here"
+
+# Only failed deliveries
+curl "https://your-flarely-server/v1/events?status=failed&limit=10" \
+  -H "Authorization: Bearer sk_live_your_key_here"
+```
+
+**Response**
+
+```json
+{
+  "data": [...],
+  "total": 42,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+---
 
 ### `GET /health`
 
-Returns `200` when DB and Redis are reachable, `503` when degraded.
+Returns `200` when DB and Redis are reachable, `503` when degraded. No auth required.
 
 ```json
 {
@@ -176,6 +233,44 @@ Flarely suppresses repeated alerts within a configurable time window per project
 
 The window resets after it expires — so if the same error fires again 15 minutes later (with a 10-min window), it will be delivered again.
 
+Each project can override the default window via `npm run manage`.
+
+---
+
+## Queue dashboard
+
+Flarely ships with [BullBoard](https://github.com/felixmosh/bull-board) for visualising the job queue — pending jobs, active, completed, and failed.
+
+Set `BULLBOARD_USER` and `BULLBOARD_PASS` in your `.env` to enable it:
+
+```
+BULLBOARD_USER=admin
+BULLBOARD_PASS=a-strong-password
+```
+
+Then visit `/admin/queues` in your browser. The dashboard is disabled entirely if either variable is unset.
+
+---
+
+## Project management CLI
+
+```bash
+npm run manage
+```
+
+```
+🔥  Flarely — Project Manager
+
+  1. List projects
+  2. Create a new project
+  3. Add an API key to a project
+  4. Revoke an API key
+  5. Delete a project
+  6. Exit
+```
+
+Each project has its own destination, dedup window, and API keys. Multiple apps can point to the same Flarely server using different API keys.
+
 ---
 
 ## Deploying to Fly.io
@@ -186,11 +281,20 @@ cp fly.toml.example fly.toml
 
 fly apps create <your-app-name>
 fly volumes create flarely_data --size 1 --app <your-app-name>
-fly secrets set REDIS_URL=<your-redis-url> RESEND_API_KEY=<your-key>
+
+fly secrets set \
+  REDIS_URL=<your-redis-url> \
+  RESEND_API_KEY=<your-key> \
+  BULLBOARD_USER=admin \
+  BULLBOARD_PASS=<strong-password>
+
 fly deploy
 
-# First-time setup (creates project + API key)
+# First-time setup — creates project + API key
 fly ssh console -C "node dist/cli/setup.js"
+
+# Manage projects after deploy
+fly ssh console -C "node dist/cli/manage.js"
 ```
 
 ---
