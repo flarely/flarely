@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import basicAuth from "@fastify/basic-auth";
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { FastifyAdapter } from "@bull-board/fastify";
@@ -29,7 +30,6 @@ export async function buildApp() {
     keyGenerator: (request) => {
       const auth = request.headers.authorization;
       if (auth?.startsWith("Bearer ")) {
-        // Hash the raw key — keeps it consistent with how we store it
         return createHash("sha256").update(auth.slice(7).trim()).digest("hex");
       }
       return request.ip;
@@ -41,13 +41,44 @@ export async function buildApp() {
   });
 
   // ── BullBoard queue dashboard ─────────────────────────────────────────────
-  const boardAdapter = new FastifyAdapter();
-  createBullBoard({
-    queues: [new BullMQAdapter(notificationQueue)],
-    serverAdapter: boardAdapter,
-  });
-  boardAdapter.setBasePath("/admin/queues");
-  await app.register(boardAdapter.registerPlugin(), { prefix: "/admin/queues" });
+  // Only mounts if BULLBOARD_USER + BULLBOARD_PASS are both set in env.
+  // Disabled entirely if either is missing — no unauthenticated exposure.
+  if (config.BULLBOARD_USER && config.BULLBOARD_PASS) {
+    const boardAdapter = new FastifyAdapter();
+    createBullBoard({
+      queues: [new BullMQAdapter(notificationQueue)],
+      serverAdapter: boardAdapter,
+    });
+    boardAdapter.setBasePath("/admin/queues");
+
+    // Register basicAuth + BullBoard in the same scope so the decorator
+    // is available when the onRequest hook runs
+    await app.register(async (scope) => {
+      await scope.register(basicAuth, {
+        validate(username, password, _req, _reply, done) {
+          if (
+            username === config.BULLBOARD_USER &&
+            password === config.BULLBOARD_PASS
+          ) {
+            return done();
+          }
+          return done(new Error("Unauthorized"));
+        },
+        authenticate: { realm: "Flarely Admin" },
+      });
+
+      scope.addHook("onRequest", scope.basicAuth);
+      await scope.register(boardAdapter.registerPlugin(), {
+        prefix: "/admin/queues",
+      });
+    });
+
+    app.log.info("BullBoard dashboard enabled at /admin/queues");
+  } else {
+    app.log.warn(
+      "BullBoard dashboard disabled — set BULLBOARD_USER and BULLBOARD_PASS to enable it"
+    );
+  }
 
   // ── Routes ────────────────────────────────────────────────────────────────
   await app.register(healthRoute);
