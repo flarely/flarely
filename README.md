@@ -15,12 +15,6 @@ Your app  →  POST /v1/ingest  →  dedup check  →  BullMQ queue  →  Slack 
 
 ---
 
-## Hosted
-
-The easiest way to use Flarely is the hosted version at **[flarely.dev](https://flarely.dev)** — no setup, no server, $9/mo.
-
----
-
 ## Self-hosting
 
 ### Requirements
@@ -301,4 +295,4 @@ fly ssh console -C "node dist/cli/manage.js"
 
 ## License
 
-MIT
+AGPL-3.0 — see [LICENSE](./LICENSE)
