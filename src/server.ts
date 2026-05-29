@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import Fastify from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import basicAuth from "@fastify/basic-auth";
@@ -10,7 +10,16 @@ import { config } from "./config.js";
 import { notificationQueue } from "./queue/client.js";
 import { healthRoute, ingestRoute, eventsRoute } from "./routes/index.js";
 
-export async function buildApp() {
+export interface BuildAppOptions {
+  /**
+   * Optional hook called after middleware is set up but before core routes are
+   * registered. Use this in flarely-cloud to mount auth, dashboard, and billing
+   * routes on the same Fastify instance.
+   */
+  extend?: (app: FastifyInstance) => Promise<void>;
+}
+
+export async function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({
     logger: {
       level: config.NODE_ENV === "production" ? "info" : "debug",
@@ -78,6 +87,11 @@ export async function buildApp() {
     app.log.warn(
       "BullBoard dashboard disabled — set BULLBOARD_USER and BULLBOARD_PASS to enable it"
     );
+  }
+
+  // ── Extension point (flarely-cloud and other consumers) ──────────────────
+  if (options.extend) {
+    await options.extend(app);
   }
 
   // ── Routes ────────────────────────────────────────────────────────────────
