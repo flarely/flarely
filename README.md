@@ -25,7 +25,7 @@ Your app  →  POST /v1/ingest  →  dedup check  →  BullMQ queue  →  Slack 
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-username/flarely.git
+git clone https://github.com/flarely/flarely.git
 cd flarely
 npm install
 ```
