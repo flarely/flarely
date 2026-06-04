@@ -11,7 +11,7 @@ export async function sendSlack(
   destConfig: DestinationConfig,
   payload: IngestPayload
 ): Promise<void> {
-  const { webhookUrl } = destConfig as SlackConfig;
+  const { url: webhookUrl } = destConfig as SlackConfig;
   const emoji = EMOJI[payload.level] ?? "📣";
 
   const body = {

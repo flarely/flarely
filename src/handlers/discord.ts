@@ -19,7 +19,7 @@ export async function sendDiscord(
   destConfig: DestinationConfig,
   payload: IngestPayload
 ): Promise<void> {
-  const { webhookUrl } = destConfig as DiscordConfig;
+  const { url: webhookUrl } = destConfig as DiscordConfig;
   const color = COLORS[payload.level] ?? 0x888888;
   const emoji = EMOJI[payload.level] ?? "📣";
 

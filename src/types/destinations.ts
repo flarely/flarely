@@ -1,11 +1,11 @@
 export type DestinationType = "slack" | "discord" | "email" | "telegram" | "webhook";
 
 export interface SlackConfig {
-  webhookUrl: string;
+  url: string;
 }
 
 export interface DiscordConfig {
-  webhookUrl: string;
+  url: string;
 }
 
 export interface EmailConfig {
