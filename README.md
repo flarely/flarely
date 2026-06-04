@@ -2,6 +2,18 @@
 
 Webhook-based error and event notification service. Send a POST request from anywhere — Flarely routes it to your destination of choice with smart deduplication so repeated errors don't spam you.
 
+## ☁️ Hosted Cloud
+
+Don't want to manage infrastructure? **[Flarely Cloud](https://app.getflarely.dev)** is the managed version — no Redis, no setup, no ops.
+
+- ✅ Free tier — 500 events/month, no credit card required
+- ✅ Cloud Pro — $5/month, unlimited events, all 5 destinations
+- ✅ Same API — swap `https://your-server` for `https://app.getflarely.dev`
+
+**[→ Sign up free at getflarely.dev](https://getflarely.dev)** · **[Docs](https://getflarely.dev/docs)**
+
+---
+
 ## How it works
 
 ```
