@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import Fastify, { type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import basicAuth from "@fastify/basic-auth";
@@ -24,6 +25,12 @@ export async function buildApp(options: BuildAppOptions = {}) {
     logger: {
       level: config.NODE_ENV === "production" ? "info" : "debug",
     },
+  });
+
+  // ── CORS — allow browser fetches from the landing page ───────────────────
+  await app.register(cors, {
+    origin: ["https://getflarely.dev", "http://localhost:3000", "http://localhost:5173"],
+    methods: ["GET", "POST", "OPTIONS"],
   });
 
   // ── Security headers ──────────────────────────────────────────────────────

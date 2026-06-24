@@ -26,6 +26,7 @@
     "@bull-board/api": "^7.1.5",
     "@bull-board/fastify": "^7.1.5",
     "@fastify/basic-auth": "^6.2.0",
+    "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "better-sqlite3": "^9.0.0",
