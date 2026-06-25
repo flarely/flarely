@@ -1,6 +1,8 @@
 # Flarely
 
-Webhook-based error and event notification service. Send a POST request from anywhere — Flarely routes it to your destination of choice with smart deduplication so repeated errors don't spam you.
+Know when anything important happens in your app. Send any event — an error, a signup, a payment, a deploy, a cron job, a button click — to Slack, Discord, Telegram, Email, or any webhook with a single HTTP call.
+
+No SDK. No agents. No dashboards to babysit. Just a POST request and an alert where your team already is.
 
 ## ☁️ Hosted Cloud
 
@@ -20,10 +22,25 @@ Don't want to manage infrastructure? **[Flarely Cloud](https://app.getflarely.de
 Your app  →  POST /v1/ingest  →  dedup check  →  BullMQ queue  →  Slack / Discord / Email / Telegram / Webhook
 ```
 
-- **Deduplication** — same error within the configured window (default 10 min) is suppressed. Only the first occurrence gets sent
+- **Deduplication** — same event within the configured window (default 10 min) is suppressed. One alert per issue, not one per request
 - **Retries** — failed deliveries retry 3 times with exponential backoff
 - **Audit log** — every ingest call is recorded (queued, delivered, suppressed, or failed)
 - **Rate limiting** — 100 requests per minute per API key
+
+## Use cases
+
+Flarely isn't just for errors. Any discrete event worth knowing about is a good fit:
+
+| Event | Example title |
+|---|---|
+| Payment failed | `"Stripe charge declined"` |
+| New user signed up | `"New signup: jane@example.com"` |
+| Cron job failed | `"Daily backup failed"` |
+| Deploy completed | `"Deployed v2.4.1 to prod"` |
+| Threshold crossed | `"Queue depth > 1000"` |
+| Button clicked | `"Landing: Hero CTA clicked"` |
+| Form submitted | `"Contact form: enterprise inquiry"` |
+| File uploaded | `"Export ready for download"` |
 
 ---
 
@@ -103,15 +120,17 @@ No SDK needed — just a plain HTTP POST from any language.
 ### curl
 
 ```bash
+# An error
 curl -X POST https://your-flarely-server/v1/ingest \
   -H "Authorization: Bearer sk_live_your_key_here" \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "Payment failed",
-    "message": "Stripe charge declined: insufficient funds",
-    "level": "error",
-    "source": "billing-service"
-  }'
+  -d '{"title":"Payment failed","message":"Stripe charge declined","level":"error","source":"billing-service"}'
+
+# A signup
+curl -X POST https://your-flarely-server/v1/ingest \
+  -H "Authorization: Bearer sk_live_your_key_here" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"New signup: jane@example.com","level":"info","source":"auth-service"}'
 ```
 
 ### JavaScript / TypeScript
@@ -141,10 +160,9 @@ import requests
 requests.post("https://your-flarely-server/v1/ingest",
   headers={"Authorization": "Bearer sk_live_your_key_here"},
   json={
-    "title": "Payment failed",
-    "level": "error",
-    "source": "billing-service",
-    "message": str(e),
+    "title": "New signup: jane@example.com",
+    "level": "info",
+    "source": "auth-service",
   }
 )
 ```
