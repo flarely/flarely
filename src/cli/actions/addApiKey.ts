@@ -1,43 +1,51 @@
-import { createHash, randomBytes } from "crypto";
 import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
 import { db, projects, apiKeys } from "../../db/index.js";
-import { ask, choose } from "../utils/index.js";
+import { ask, choose, generateApiKey } from "../utils/index.js";
+import { lang } from "../lang/index.js";
+import { logger } from "../../logger.js";
 
 export async function addApiKey(): Promise<void> {
-  const all = db.select().from(projects).all();
+  let all;
+  try {
+    all = db.select().from(projects).all();
+  } catch (err) {
+    logger.error("Failed to load projects", err);
+    console.log(lang.dbError);
+    return;
+  }
 
   if (all.length === 0) {
-    console.log("\n  No projects found. Create one first.\n");
+    console.log(lang.noProjects);
     return;
   }
 
   console.log();
   const projectNames = all.map((p) => p.name);
-  const chosen       = await choose("Select project:", projectNames);
-  const project      = all[projectNames.indexOf(chosen)];
+  const chosen  = await choose(lang.prompt.selectProject, projectNames);
+  const project = all[projectNames.indexOf(chosen)];
 
-  const label = await ask("Key label (e.g. production, staging): ");
+  const label = await ask(lang.prompt.keyLabel);
+  const { rawKey, keyHash } = generateApiKey();
 
-  const rawKey  = `sk_live_${randomBytes(24).toString("hex")}`;
-  const keyHash = createHash("sha256").update(rawKey).digest("hex");
+  try {
+    db.insert(apiKeys)
+      .values({ id: nanoid(), projectId: project.id, keyHash, label: label || null })
+      .run();
+  } catch (err) {
+    logger.error("Failed to insert API key", err);
+    console.log(lang.dbError);
+    return;
+  }
 
-  db.insert(apiKeys)
-    .values({
-      id: nanoid(),
-      projectId: project.id,
-      keyHash,
-      label: label || null,
-    })
-    .run();
+  let keyCount = 1;
+  try {
+    keyCount = db.select().from(apiKeys).where(eq(apiKeys.projectId, project.id)).all().length;
+  } catch (err) {
+    logger.error("Failed to count keys", err);
+  }
 
-  const keyCount = db
-    .select()
-    .from(apiKeys)
-    .where(eq(apiKeys.projectId, project.id))
-    .all().length;
-
-  console.log(`\n  ✅ New API key added to "${project.name}" (${keyCount} key${keyCount > 1 ? "s" : ""} total)\n`);
-  console.log(`  API Key (shown once — save it now):\n`);
+  console.log(lang.success.apiKeyAdded(project.name, keyCount));
+  console.log(lang.info.apiKeyOnce);
   console.log(`  ${rawKey}\n`);
 }

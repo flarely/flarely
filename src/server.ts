@@ -9,13 +9,9 @@ import { FastifyAdapter } from "@bull-board/fastify";
 import { config } from "./config.js";
 import { notificationQueue } from "./queue/client.js";
 import { healthRoute, ingestRoute, eventsRoute } from "./routes/index.js";
+import { RATE_LIMIT_MAX, RATE_LIMIT_WINDOW } from "./constants.js";
 
 export interface BuildAppOptions {
-  /**
-   * Optional hook called after middleware is set up but before core routes are
-   * registered. Use this in flarely-cloud to mount auth, dashboard, and billing
-   * routes on the same Fastify instance.
-   */
   extend?: (app: FastifyInstance) => Promise<void>;
 }
 
@@ -26,16 +22,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
     },
   });
 
-  // ── Security headers ──────────────────────────────────────────────────────
-  await app.register(helmet, {
-    // Relax CSP so BullBoard UI assets load correctly
-    contentSecurityPolicy: false,
-  });
+  await app.register(helmet, { contentSecurityPolicy: false });
 
-  // ── Rate limiting — per API key (falls back to IP for unauthenticated) ────
   await app.register(rateLimit, {
-    max: 100,
-    timeWindow: "1 minute",
+    max: RATE_LIMIT_MAX,
+    timeWindow: RATE_LIMIT_WINDOW,
     keyGenerator: (request) => {
       const auth = request.headers.authorization;
       if (auth?.startsWith("Bearer ")) {
@@ -49,9 +40,6 @@ export async function buildApp(options: BuildAppOptions = {}) {
     }),
   });
 
-  // ── BullBoard queue dashboard ─────────────────────────────────────────────
-  // Only mounts if BULLBOARD_USER + BULLBOARD_PASS are both set in env.
-  // Disabled entirely if either is missing — no unauthenticated exposure.
   if (config.BULLBOARD_USER && config.BULLBOARD_PASS) {
     const boardAdapter = new FastifyAdapter();
     createBullBoard({
@@ -60,15 +48,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
     });
     boardAdapter.setBasePath("/admin/queues");
 
-    // Register basicAuth + BullBoard in the same scope so the decorator
-    // is available when the onRequest hook runs
     await app.register(async (scope) => {
       await scope.register(basicAuth, {
         validate(username, password, _req, _reply, done) {
-          if (
-            username === config.BULLBOARD_USER &&
-            password === config.BULLBOARD_PASS
-          ) {
+          if (username === config.BULLBOARD_USER && password === config.BULLBOARD_PASS) {
             return done();
           }
           return done(new Error("Unauthorized"));
@@ -77,9 +60,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
       });
 
       scope.addHook("onRequest", scope.basicAuth);
-      await scope.register(boardAdapter.registerPlugin(), {
-        prefix: "/admin/queues",
-      });
+      await scope.register(boardAdapter.registerPlugin(), { prefix: "/admin/queues" });
     });
 
     app.log.info("BullBoard dashboard enabled at /admin/queues");
@@ -89,17 +70,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
     );
   }
 
-  // ── Extension point (flarely-cloud and other consumers) ──────────────────
   if (options.extend) {
     await options.extend(app);
   }
 
-  // ── Routes ────────────────────────────────────────────────────────────────
   await app.register(healthRoute);
   await app.register(ingestRoute, { prefix: "/v1" });
   await app.register(eventsRoute, { prefix: "/v1" });
 
-  // ── 404 fallback ──────────────────────────────────────────────────────────
   app.setNotFoundHandler((_request, reply) => {
     reply.status(404).send({ error: "Not found" });
   });

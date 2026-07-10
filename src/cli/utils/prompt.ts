@@ -1,4 +1,5 @@
 import { createInterface, type Interface } from "readline";
+import { lang } from "../lang/index.js";
 
 let _rl: Interface | null = null;
 
@@ -24,7 +25,7 @@ export async function choose<T extends string>(
     const raw = await ask(`${question}\n${listed}\n> `);
     const idx = parseInt(raw) - 1;
     if (idx >= 0 && idx < options.length) return options[idx];
-    console.log("  Invalid choice, try again.\n");
+    console.log(lang.invalidChoice);
   }
 }
 

@@ -6,84 +6,67 @@
  * For managing projects after setup, use: pnpm manage
  */
 
-import { createHash, randomBytes } from "crypto";
 import { nanoid } from "nanoid";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { fileURLToPath } from "url";
 import { db, projects, apiKeys } from "../db/index.js";
-import { ask, choose, closePrompt } from "./utils/index.js";
+import { ask, choose, generateApiKey, collectDestinationConfig, closePrompt } from "./utils/index.js";
+import { lang } from "./lang/index.js";
+import { logger } from "../logger.js";
+import { DESTINATION_TYPES, DEFAULT_DEDUP_WINDOW_SECONDS, DEFAULT_API_KEY_LABEL } from "../constants.js";
 
 async function main() {
-  // Ensure schema is up to date before inserting anything
-  const migrationsPath = fileURLToPath(
-    new URL("../db/migrations", import.meta.url)
-  );
+  const migrationsPath = fileURLToPath(new URL("../db/migrations", import.meta.url));
   migrate(db, { migrationsFolder: migrationsPath });
 
-  console.log("\n🔥  Flarely — First-time Setup\n");
-  console.log("  (To manage projects later, run: pnpm manage)\n");
+  console.log(lang.setup.banner);
+  console.log(lang.setup.hint);
 
-  const name = await ask("Project name: ");
-  if (!name) { console.log("  Aborted.\n"); closePrompt(); return; }
+  const name = await ask(lang.prompt.projectName);
+  if (!name) { console.log(lang.aborted); closePrompt(); return; }
 
-  const destination = await choose("\nDestination type:", [
-    "slack",
-    "discord",
-    "email",
-    "telegram",
-    "webhook",
-  ] as const);
+  const destination = await choose(lang.prompt.destinationType, [...DESTINATION_TYPES]);
+  const destConfig  = await collectDestinationConfig(destination);
 
-  let destConfig: Record<string, string> = {};
-
-  if (destination === "slack" || destination === "discord") {
-    destConfig.webhookUrl = await ask("Webhook URL: ");
-  } else if (destination === "email") {
-    destConfig.to   = await ask("Send alerts TO (email address): ");
-    destConfig.from = await ask("Send alerts FROM (e.g. Flarely <alerts@yourdomain.com>): ");
-  } else if (destination === "telegram") {
-    destConfig.botToken = await ask("Bot token: ");
-    destConfig.chatId   = await ask("Chat ID: ");
-  } else if (destination === "webhook") {
-    destConfig.url = await ask("Webhook URL: ");
-  }
-
-  const windowRaw   = await ask("\nDedup window in seconds (Enter for default 600): ");
-  const dedupWindow = parseInt(windowRaw) || 600;
+  const windowRaw  = await ask(lang.prompt.dedupWindow);
+  const dedupWindow = parseInt(windowRaw) || DEFAULT_DEDUP_WINDOW_SECONDS;
 
   const projectId = nanoid();
-  db.insert(projects)
-    .values({
-      id: projectId,
-      name,
-      destination,
-      config: JSON.stringify(destConfig),
-      dedupWindow,
-    })
-    .run();
+  try {
+    db.insert(projects)
+      .values({ id: projectId, name, destination, config: JSON.stringify(destConfig), dedupWindow })
+      .run();
+  } catch (err) {
+    logger.error("Failed to create project", err);
+    console.log(lang.dbError);
+    closePrompt();
+    return;
+  }
 
-  const rawKey  = `sk_live_${randomBytes(24).toString("hex")}`;
-  const keyHash = createHash("sha256").update(rawKey).digest("hex");
-
-  db.insert(apiKeys)
-    .values({ id: nanoid(), projectId, keyHash, label: "default" })
-    .run();
+  const { rawKey, keyHash } = generateApiKey();
+  try {
+    db.insert(apiKeys)
+      .values({ id: nanoid(), projectId, keyHash, label: DEFAULT_API_KEY_LABEL })
+      .run();
+  } catch (err) {
+    logger.error("Failed to create initial API key", err);
+    console.log(lang.dbError);
+    closePrompt();
+    return;
+  }
 
   closePrompt();
 
-  console.log("\n✅  Project created!\n");
-  console.log(`   Name        : ${name}`);
-  console.log(`   Destination : ${destination}`);
-  console.log(`   Dedup window: ${dedupWindow}s`);
-  console.log(`   Project ID  : ${projectId}`);
-  console.log(`\n   API Key (shown once — save it now):\n`);
+  console.log(lang.success.projectCreated(name));
+  console.log(lang.info.projectDetails(destination, dedupWindow, projectId));
+  console.log(lang.info.apiKeyOnce);
   console.log(`   ${rawKey}\n`);
   console.log(
-    `Try it:\n\n   curl -X POST http://localhost:3000/v1/ingest \\\n     -H "Authorization: Bearer ${rawKey}" \\\n     -H "Content-Type: application/json" \\\n     -d '{"title":"Test","level":"error","source":"setup-cli"}'\n`
+    `Try it:\n\n   curl -X POST http://localhost:3000/v1/ingest \\\n     -H "Authorization: Bearer ${rawKey}" \\\n     -H "Content-Type: application/json" \\\n     -d '{"title":"Test","level":"info","source":"setup-cli"}'\n`
   );
 }
 
 main().catch((err) => {
-  console.error(err);
+  logger.error("Fatal startup error", err);
   process.exit(1);
 });

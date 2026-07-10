@@ -1,61 +1,45 @@
-import { createHash, randomBytes } from "crypto";
 import { nanoid } from "nanoid";
 import { db, projects, apiKeys } from "../../db/index.js";
-import { ask, choose } from "../utils/index.js";
+import { ask, choose, generateApiKey, collectDestinationConfig } from "../utils/index.js";
+import { lang } from "../lang/index.js";
+import { logger } from "../../logger.js";
+import { DESTINATION_TYPES, DEFAULT_DEDUP_WINDOW_SECONDS, DEFAULT_API_KEY_LABEL } from "../../constants.js";
 
 export async function createProject(): Promise<void> {
   console.log();
-  const name = await ask("Project name: ");
-  if (!name) { console.log("  Aborted.\n"); return; }
+  const name = await ask(lang.prompt.projectName);
+  if (!name) { console.log(lang.aborted); return; }
 
-  const destination = await choose("\nDestination type:", [
-    "slack",
-    "discord",
-    "email",
-    "telegram",
-    "webhook",
-  ] as const);
+  const destination = await choose(lang.prompt.destinationType, [...DESTINATION_TYPES]);
+  const destConfig  = await collectDestinationConfig(destination);
 
-  let destConfig: Record<string, string> = {};
-
-  if (destination === "slack" || destination === "discord") {
-    destConfig.webhookUrl = await ask("Webhook URL: ");
-  } else if (destination === "email") {
-    destConfig.to   = await ask("Send alerts TO (email address): ");
-    destConfig.from = await ask("Send alerts FROM (e.g. Flarely <alerts@yourdomain.com>): ");
-  } else if (destination === "telegram") {
-    destConfig.botToken = await ask("Bot token: ");
-    destConfig.chatId   = await ask("Chat ID: ");
-  } else if (destination === "webhook") {
-    destConfig.url = await ask("Webhook URL: ");
-  }
-
-  const windowRaw  = await ask("Dedup window in seconds (Enter for default 600): ");
-  const dedupWindow = parseInt(windowRaw) || 600;
+  const windowRaw  = await ask(lang.prompt.dedupWindow);
+  const dedupWindow = parseInt(windowRaw) || DEFAULT_DEDUP_WINDOW_SECONDS;
 
   const projectId = nanoid();
-  db.insert(projects)
-    .values({
-      id: projectId,
-      name,
-      destination,
-      config: JSON.stringify(destConfig),
-      dedupWindow,
-    })
-    .run();
+  try {
+    db.insert(projects)
+      .values({ id: projectId, name, destination, config: JSON.stringify(destConfig), dedupWindow })
+      .run();
+  } catch (err) {
+    logger.error("Failed to create project", err);
+    console.log(lang.dbError);
+    return;
+  }
 
-  // Generate first API key automatically
-  const rawKey  = `sk_live_${randomBytes(24).toString("hex")}`;
-  const keyHash = createHash("sha256").update(rawKey).digest("hex");
+  const { rawKey, keyHash } = generateApiKey();
+  try {
+    db.insert(apiKeys)
+      .values({ id: nanoid(), projectId, keyHash, label: DEFAULT_API_KEY_LABEL })
+      .run();
+  } catch (err) {
+    logger.error("Failed to create initial API key", err);
+    console.log(lang.dbError);
+    return;
+  }
 
-  db.insert(apiKeys)
-    .values({ id: nanoid(), projectId, keyHash, label: "default" })
-    .run();
-
-  console.log(`\n  ✅ Project "${name}" created!\n`);
-  console.log(`  Destination : ${destination}`);
-  console.log(`  Dedup window: ${dedupWindow}s`);
-  console.log(`  Project ID  : ${projectId}`);
-  console.log(`\n  API Key (shown once — save it now):\n`);
+  console.log(lang.success.projectCreated(name));
+  console.log(lang.info.projectDetails(destination, dedupWindow, projectId));
+  console.log(lang.info.apiKeyOnce);
   console.log(`  ${rawKey}\n`);
 }

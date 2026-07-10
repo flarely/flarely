@@ -5,13 +5,14 @@ import { db, events } from "../db/index.js";
 import { authenticate } from "../middleware/auth.js";
 import { buildFingerprint, checkAndRecordDedup } from "../dedup/index.js";
 import { notificationQueue } from "../queue/client.js";
+import { JOB_ATTEMPTS, JOB_BACKOFF_DELAY_MS, JOB_REMOVE_ON_COMPLETE, JOB_REMOVE_ON_FAIL } from "../constants.js";
 import type { NotificationJob, DestinationConfig } from "../types/index.js";
 
 const ingestBodySchema = z.object({
-  title: z.string().min(1).max(255),
-  message: z.string().max(5000).optional(),
-  level: z.enum(["info", "warn", "error", "critical"]),
-  source: z.string().min(1).max(100),
+  title:       z.string().min(1).max(255),
+  message:     z.string().max(5000).optional(),
+  level:       z.enum(["info", "warn", "error", "critical"]),
+  source:      z.string().min(1).max(100),
   fingerprint: z.string().max(255).optional(),
 });
 
@@ -20,7 +21,6 @@ export const ingestRoute: FastifyPluginAsync = async (fastify) => {
     "/ingest",
     { preHandler: [authenticate] },
     async (request, reply) => {
-      // ── 1. Validate body ──────────────────────────────────────────────────
       const parsed = ingestBodySchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({
@@ -32,22 +32,15 @@ export const ingestRoute: FastifyPluginAsync = async (fastify) => {
       const payload = parsed.data;
       const project = request.project;
 
-      // ── 2. Resolve fingerprint ────────────────────────────────────────────
       const fingerprint =
         payload.fingerprint ??
         buildFingerprint(project.id, payload.title, payload.source, payload.level);
 
-      // ── 3. Dedup check ────────────────────────────────────────────────────
       const destConfig: DestinationConfig = JSON.parse(project.config);
-      const suppressed = checkAndRecordDedup(
-        fingerprint,
-        project.id,
-        project.dedupWindow
-      );
+      const suppressed = checkAndRecordDedup(fingerprint, project.id, project.dedupWindow);
 
       const eventId = nanoid();
 
-      // ── 4a. Suppressed — record it and return early ───────────────────────
       if (suppressed) {
         db.insert(events)
           .values({
@@ -69,7 +62,6 @@ export const ingestRoute: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      // ── 4b. New event — persist + enqueue ─────────────────────────────────
       db.insert(events)
         .values({
           id: eventId,
@@ -92,10 +84,10 @@ export const ingestRoute: FastifyPluginAsync = async (fastify) => {
       };
 
       await notificationQueue.add("deliver", job, {
-        attempts: 3,
-        backoff: { type: "exponential", delay: 2000 }, // 2s → 4s → 8s
-        removeOnComplete: { count: 100 },
-        removeOnFail: { count: 50 },
+        attempts: JOB_ATTEMPTS,
+        backoff: { type: "exponential", delay: JOB_BACKOFF_DELAY_MS },
+        removeOnComplete: { count: JOB_REMOVE_ON_COMPLETE },
+        removeOnFail:     { count: JOB_REMOVE_ON_FAIL },
       });
 
       return reply.status(202).send({ id: eventId, status: "queued" });

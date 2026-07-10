@@ -1,16 +1,16 @@
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { config } from "../config.js";
+import { logger } from "../logger.js";
+import { QUEUE_NAME } from "../constants.js";
 
-// Shared Redis connection — BullMQ requires maxRetriesPerRequest: null
-// rediss:// (TLS) is required for Upstash and most managed Redis providers
 export const connection = new Redis(config.REDIS_URL, {
   maxRetriesPerRequest: null,
   tls: config.REDIS_URL.startsWith("rediss://") ? {} : undefined,
 });
 
 connection.on("error", (err: Error) => {
-  console.error("Redis connection error:", err.message);
+  logger.error("Redis connection error", err);
 });
 
-export const notificationQueue = new Queue("notifications", { connection });
+export const notificationQueue = new Queue(QUEUE_NAME, { connection });

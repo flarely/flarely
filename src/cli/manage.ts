@@ -1,4 +1,6 @@
 import { choose, closePrompt } from "./utils/index.js";
+import { lang } from "./lang/index.js";
+import { logger } from "../logger.js";
 import {
   listProjects,
   createProject,
@@ -17,26 +19,26 @@ const MENU = [
 ] as const;
 
 async function main() {
-  console.log("\n🔥  Flarely — Project Manager\n");
+  console.log(lang.manage.banner);
 
   while (true) {
-    const choice = await choose("What do you want to do?", [...MENU]);
+    const choice = await choose(lang.prompt.whatToDo, [...MENU]);
 
     switch (choice) {
-      case "List projects":              await listProjects();   break;
-      case "Create a new project":       await createProject();  break;
+      case "List projects":               await listProjects();  break;
+      case "Create a new project":        await createProject(); break;
       case "Add an API key to a project": await addApiKey();     break;
-      case "Revoke an API key":          await revokeApiKey();   break;
-      case "Delete a project":           await deleteProject();  break;
+      case "Revoke an API key":           await revokeApiKey();  break;
+      case "Delete a project":            await deleteProject(); break;
       case "Exit":
         closePrompt();
-        console.log("\n  Bye!\n");
+        console.log(lang.manage.bye);
         process.exit(0);
     }
   }
 }
 
 main().catch((err) => {
-  console.error(err);
+  logger.error("Fatal error", err);
   process.exit(1);
 });
